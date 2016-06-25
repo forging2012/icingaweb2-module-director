@@ -36,6 +36,7 @@ class EventstreamCommand extends DdoCommand
         $redis = Redis::instance();
         $time = time();
         $cnt = 0;
+        $cntEvents = 0;
         $hasTransaction = false;
         $ddo = $this->ddo();
         $db = $ddo->getDbAdapter();
@@ -45,13 +46,14 @@ class EventstreamCommand extends DdoCommand
         while (true) {
 
             while ($res = $redis->brpop('icinga2::events', 1)) {
+                $cntEvents++;
                 // res = array(queuename, value)
                 $object = $list->processCheckResult(json_decode($res[1]));
                 if ($object === false) {
                     continue;
                 }
 
-                if ($object->hasBeenModified()) {
+                if ($object->hasBeenModified() && $object->state !== null) {
                     printf("%s has been modified\n", $object->getUniqueName());
 
                     if (! $hasTransaction) {
@@ -68,8 +70,9 @@ class EventstreamCommand extends DdoCommand
                     || ($cnt > 0 && (($newtime = time()) - $time > 1))
                 ) {
                     $time = $newtime;
-                    echo "Committing $cnt events\n";
+                    echo "Committing $cnt events ($cntEvents total)\n";
                     $cnt = 0;
+                    $cntEvents = 0;
                     $db->commit();
                     $hasTransaction = false;
                 }
@@ -79,8 +82,9 @@ class EventstreamCommand extends DdoCommand
 
             if ($cnt > 0) {
                 $time = time();
-                echo "Committing $cnt events\n";
+                echo "Committing $cnt events ($cntEvents total)\n";
                 $cnt = 0;
+                $cntEvents = 0;
                 $db->commit();
                 $hasTransaction = false;
             }
